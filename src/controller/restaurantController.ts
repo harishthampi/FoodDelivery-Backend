@@ -1,85 +1,72 @@
-import { Request, Response } from 'express';
-import Restaurant from '../models/restaurantModel';
-import cloudinary from "cloudinary";
-import mongoose from 'mongoose';
+import { query, Request, Response } from "express";
+import Restaurant from "../models/restaurantModel";
 
-const getRestaurant = async(req:Request,res:Response)=>{
-    try{
-        const restaurant = await Restaurant.findOne({user:req.userId});
-        if(!restaurant){
-            return res.send(404).json({message:"Restaurant not found!"});
-        }
-        res.json(restaurant);
+const searchRestaurants = async (req: Request, res: Response) => {
+  try {
+    const city = req.params.city;
+    //extract query string parameters from the request object.
+    const searchQuery = (req.query.searchQuery as string) || "";
+    const selectedCuisines = (req.query.selectedCuisines as string) || "";
+    const sortOption = (req.query.sortOption as string) || "lastUpdated";
+    const page = parseInt(req.query.page as string) || 1;
+
+    //Creates an empty object called query.
+    let query: any = {};
+    //Adds a condition to the query object where the key is "city".
+    //The value is a case-insensitive regular expression that matches the city parameter.
+    query["city"] = new RegExp(city, "i");
+    //Counts the number of documents in the Restaurant collection that match with the city.
+    const cityCheck = await Restaurant.countDocuments(query);
+    if (cityCheck === 0) {
+      return res.status(404).json({
+        data:[],
+        pagination:{
+          total:0,
+          page:1,
+          pages:1,
+        },
+      });
     }
-    catch(error){
-        console.log(error);
-        res.status(500).json({message:"Something went wrong!"});
+
+    if (selectedCuisines) {
+      const cuisinesArray = selectedCuisines
+        .split(",") //converts Italian,Mexican,Chinese to [Italian,Mexican,Chinese]
+        .map((cuisine) => new RegExp(cuisine, "i")); //converts each cuisine into a case-insensitive regular expression.
+      query["cuisines"] = { $all: cuisinesArray };//Adds a condition to the query object where the key is "cuisines". The $all operator is used to match all elements in an array against the cuisinesArray.
     }
-}
 
-const createRestaurant = async(req:Request,res:Response)=>{
-    try{
-        const existingRestaurant = await Restaurant.findOne({user:req.userId});
-
-        if(existingRestaurant){
-            return res.status(409).json({message:"Restaurant already exists!"});
-        }
-        //upload the image to Cloudinary
-        const imageUrl = await uploadImage(req.file as Express.Multer.File);
-
-        //create a new restaurant object
-        const restaurant = new Restaurant(req.body);
-        restaurant.imageUrl = imageUrl;
-        // assign unique identifier to the user field of the restaurant document.
-        restaurant.user = new mongoose.Types.ObjectId(req.userId);//// Ensures correct format of the user field
-        restaurant.lastUpdated = new Date();
-        await restaurant.save();
-
-        res.status(201).send(restaurant);
+    if (searchQuery) {
+      const searchRegex = new RegExp(searchQuery, "i");
+      query["$or"] = [
+        { restaurantName: searchRegex }, // condition checks if the restaurantName field matches the searchRegex. If the restaurant's name contains the search query, it will match.
+        { cuisines: { $in: [searchRegex] } }, //condition checks if any of the elements in the cuisines field matches the searchRegex. The $in operator is used to match any element in an array against the regular expression.
+      ];
     }
-    catch(error){
-        console.log(error);
-        res.status(500).json({message:"Something went wrong!"});
-    }
-}
+    const pageSize = 10;//Sets the number of results to display per page.
+    const skip = (page - 1) * pageSize;//Calculates the number of documents to skip based on the page number and page size.
+    //Finds all documents in the Restaurant collection that match the query object.
+    const restaurants = await Restaurant.find(query)
+      .sort({ [sortOption]: 1 })
+      .skip(skip)
+      .limit(pageSize)
+      .lean();
 
-const updateRestaurant = async(req:Request,res:Response) => {
-    try{
-        const restaurant = await Restaurant.findOne({user:req.userId});
-        if(!restaurant){
-            return res.status(404).json({message:"Restaurant not found!"});
-        }
-        restaurant.restaurantName = req.body.restaurantName;
-        restaurant.city = req.body.city;
-        restaurant.country = req.body.country;
-        restaurant.deliveryPrice = req.body.deliveryPrice;
-        restaurant.estimatedDeliveryTime = req.body.estimatedDeliveryTime;
-        restaurant.cuisines = req.body.cuisines;
-        restaurant.menuItems = req.body.menuItems;
-        restaurant.lastUpdated = new Date();
-        
-        if(req.file){
-            const imageUrl = await uploadImage(req.file as Express.Multer.File);
-            restaurant.imageUrl = imageUrl;
-        }
-        await restaurant.save();
-        res.status(200).send(restaurant);
+    const total = await Restaurant.countDocuments(query);
+    const response = {
+        data:restaurants,
+        pagination:{
+          total,
+          page,
+          pages:Math.ceil(total/pageSize),
+        },
     }
-    catch(error){
-        console.log(error);
-        res.status(500).json({message:"Something went wrong!"});
-    }
-}
+    res.json(response);
 
-const uploadImage = async(file:Express.Multer.File)=>{
-    //cast the req.file object to the Express.Multer.File type to help TypeScript understand the shape of the req.file object
-    const image = file;
-    //convert the image to a base64 string
-    const base64Image = Buffer.from(image.buffer).toString("base64");
-    //create a data URI from the base64 image
-    const dataURI = `data:${image.mimetype};base64,${base64Image}`;
-    //upload the image to Cloudinary
-    const uploadResponse = await cloudinary.v2.uploader.upload(dataURI);
-    return uploadResponse.url;
-}
-export default {getRestaurant,createRestaurant,updateRestaurant};
+  } 
+  catch (error) {
+    console.log(error);
+    res.status(500).json({ message: " Error" });
+  }
+};
+
+export default { searchRestaurants };

@@ -1,27 +1,19 @@
-import  express  from "express";
-import multer from "multer";
+import express from "express";
+import { param } from "express-validator";
 import restaurantController from "../controller/restaurantController";
-import { jwtCheck, jwtParse } from "../middleware/auth";
-import { validateMyRestaurantRequest } from "../middleware/validation";
-
 
 const router = express.Router();
 
-const storage = multer.memoryStorage();
-//configures multer to store the uploaded file in memory (RAM) instead of on disk.
-const upload = multer({
-    //Stores the uploaded file in memory and limits the file size to 5MB.
-    storage:storage,
-    limits:{
-        fileSize:5*1024*1024 //5MB
-    }
-})
-
-
-// /api/restaurant
-router.get('/',jwtCheck,jwtParse,restaurantController.getRestaurant);
-router.post('/',upload.single("imageFile"),validateMyRestaurantRequest,jwtCheck,jwtParse,restaurantController.createRestaurant);
-router.put('/',upload.single("imageFile"),validateMyRestaurantRequest,jwtCheck,jwtParse,restaurantController.updateRestaurant);
-
+// api/restaurant
+router.get(
+  //param("city") middleware checks that the city parameter is a string, trims it, and ensures it's not empty. If the validation fails, an error message will be generated.
+  "/search/:city",
+  param("city")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("City parameter must be a valid string"),
+    restaurantController.searchRestaurants
+);
 
 export default router;
