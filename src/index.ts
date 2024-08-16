@@ -6,6 +6,7 @@ import userRouter from "./routes/userRoute";
 import {v2 as cloudinary} from "cloudinary";
 import myRestaurantRouter from "./routes/myRestaurantRoutes";
 import restaurantRoutes from "./routes/restaurantRoutes";
+import orderRoute from "./routes/orderRoute";
 mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string)
 .then(()=>{
     console.log("Connected to MongoDB");
@@ -19,8 +20,10 @@ mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string)
 
 
 const app = express();
-app.use(express.json());
+
 app.use(cors());
+app.use('/api/order/checkout/webhook',express.raw({type:'*/*'}));//This is to parse the raw body of the request
+app.use(express.json());
 
 app.get("/health", async (req: Request, res: Response) => {
     res.send({message:"Health is OK!"})
@@ -29,6 +32,7 @@ app.get("/health", async (req: Request, res: Response) => {
 app.use('/api/user',userRouter);
 app.use('/api/my/restaurant',myRestaurantRouter);
 app.use('/api/restaurant',restaurantRoutes);
+app.use('/api/order',orderRoute)
 
 app.listen(7000,()=>{
     console.log("Server is running on port 7000");
